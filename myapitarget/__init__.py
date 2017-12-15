@@ -1,4 +1,4 @@
 __all__ = ['agency', 'client']
 
-from lib.client import MTClient
-from lib.agency import MTAgency
+from myapitarget.client import MTClient
+from myapitarget.agency import MTAgency
