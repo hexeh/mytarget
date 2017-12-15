@@ -1,0 +1,13 @@
+{
+	"grants": [{
+		"token_info": {
+			"expired_at": "2017-12-16 00:00:00.000000",
+			"refresh": "secret_goes_here",
+			"access": "access_goes_here"
+		},
+		"client_id": "id_goes_here",
+		"client_secret": "secret_goes_here",
+		"client_name": "mytarget@company.my"
+	}],
+	"base": "https://target.my.com"
+}
