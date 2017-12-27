@@ -12,13 +12,13 @@ import sys
 
 class MTClient:
 
-	def __init__(self, id, parent_id, parent_secret, client_config):
+	def __init__(self, parent, client_config):
 
 		self.config = client_config
 		self.base = 'https://target.my.com'
 
-		self.parent = parent_id
-		self.id = id
+		self.parent = parent
+		self.id = client_config['client_id']
 		self.log = []
 		self.errors_cnt = 0
 		# Check configs
@@ -62,8 +62,8 @@ class MTClient:
 						'grant_type': 'refresh_token',
 						'refresh_token': self.config['client_refresh'],
 						'agency_client_name': self.config['client_email'],
-						'client_id': parent_id,
-						'client_secret': parent_secret
+						'client_id': self.parent['id'],
+						'client_secret': self.parent['secret']
 					}
 					cli_grants = requests.post(
 						self.base + '/api/v2/oauth2/token.json', 
@@ -105,8 +105,8 @@ class MTClient:
 						new_query = {
 							'grant_type': 'agency_client_credentials',
 							'agency_client_name': self.config['client_email'],
-							'client_id': parent_id,
-							'client_secret': parent_secret
+							'client_id': self.parent['id'],
+							'client_secret': self.parent['secret']
 						}
 						new_token = requests.post(
 							self.base + '/api/v2/oauth2/token.json', 
@@ -162,8 +162,8 @@ class MTClient:
 				new_query = {
 					'grant_type': 'agency_client_credentials',
 					'agency_client_name': self.config['client_email'],
-					'client_id': parent_id,
-					'client_secret': parent_secret
+					'client_id': self.parent['id'],
+					'client_secret': self.parent['secret']
 				}
 				new_token = requests.post(
 					self.base + '/api/v2/oauth2/token.json', 
@@ -220,7 +220,7 @@ class MTClient:
 
 			reasonable_status = ['active', 'blocked', 'deleted']
 			for rs in reasonable_status:
-				time.sleep(0.7)
+				time.sleep(1)
 				camps_query = {
 					'status': rs,
 					'fields': 'id,name,status' + ( ',stats_yesterday' if withStats else '')
@@ -295,6 +295,7 @@ class MTClient:
 				stats_chunk = json.loads(stats_r.text)['campaigns']
 				for sc in stats_chunk:
 					stats_total.append({
+						'client_id': self.id,
 						'campaign_id': sc['campaign_id'],
 						'date': sc['date'],
 						'impressions': sc['general']['shows'],
@@ -335,10 +336,10 @@ class MTClient:
 
 			reasonable_status = ['active', 'blocked', 'deleted']
 			camp_ids = []
-			time.sleep(0.2)
+			time.sleep(0.3)
 			
 			for rs in reasonable_status:
-				time.sleep(0.7)
+				time.sleep(0.8)
 				camps_query = {
 					'status': rs,
 					'fields': 'id'
@@ -369,7 +370,7 @@ class MTClient:
 			if len(camp_ids) > 0:
 				chunks_count = math.ceil(len(camp_ids) / 152)
 				if chunks_count <= 1:
-					time.sleep(0.5)
+					time.sleep(1)
 					stats_query = {
 						'date_from': str(date_start),
 						'date_to': str(date_end),
@@ -388,6 +389,7 @@ class MTClient:
 						for sc in stats_chunk:
 							for scs in sc['rows']:
 								stats_total.append({
+									'client_id': self.id,
 									'campaign_id': sc['id'],
 									'date': scs['date'],
 									'impressions': scs['base']['shows'],
@@ -430,7 +432,7 @@ class MTClient:
 						return arrs
 					camps_chunks = split(camp_ids, chunks_count)
 					for cch in camps_chunks:
-						time.sleep(0.7)
+						time.sleep(1)
 						stats_query = {
 							'date_from': str(date_start),
 							'date_to': str(date_end),
@@ -449,6 +451,7 @@ class MTClient:
 							for sc in stats_chunk:
 								for scs in sc['rows']:
 									stats_total.append({
+										'client_id': self.id,
 										'campaign_id': sc['id'],
 										'date': scs['date'],
 										'impressions': scs['base']['shows'],
@@ -494,3 +497,47 @@ class MTClient:
 					}
 				})
 		return(stats_total)
+
+	def getCounters(self):
+
+		c_request = requests.get(
+			self.base + '/api/v2/remarketing/counters.json',
+			headers = {
+				'Content-Type': 'application/x-www-form-urlencoded',
+				'Authorization': 'Bearer ' + str(self.config['client_access'])
+				}
+			)
+		if c_request.status_code == 200:
+			c_response = json.loads(c_request.text)['items']
+			for ci,cc in enumerate(c_response):
+				c_response[ci]['client_id'] = self.id
+				c_response[ci]['client_name'] = self.config['client_name']
+				c_response[ci]['client_email'] = self.config['client_email']
+			self.log.append({
+				'source': 'target',
+				'date': str(datetime.datetime.now()),
+				'action': 'dict',
+				'state': 'OK',
+				'details': {
+					'id': self.id,
+					'step': 'counters',
+					'reason': '200',
+					'text': ''
+					}
+				})
+		else:
+			self.log.append({
+				'source': 'target',
+				'date': str(datetime.datetime.now()),
+				'action': 'dict',
+				'state': 'OK',
+				'details': {
+					'id': self.id,
+					'step': 'counters',
+					'reason': str(c_request.status_code),
+					'text': str(c_request.text)
+					}
+				})
+			c_response = []
+
+		return(c_response)
