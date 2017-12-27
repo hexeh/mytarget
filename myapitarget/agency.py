@@ -1,15 +1,16 @@
 # -*- coding: utf-8 -*-
 
-
 import datetime
 from dateutil import parser
 import pprint
 import time
 import json
+import threading
 import requests
 import urllib
 import sys
-from myapitarget import MTClient
+from queue import Queue
+from lib import MTClient
 
 class MTAgency:
 
@@ -128,124 +129,338 @@ class MTAgency:
 		#with open('configs/mt.json', 'w') as jsonf:
 		#	json.dump(self.config, jsonf)
 
-	def getClients(self, existed, updateList = True):
+	def getClients(self, existed, updateList = True, doPar = True):
 
 		result = {}
 
-		if updateList:
-			for i in self.config['grants']:
-				clients = requests.get( 
-					self.base + '/api/v1/clients.json',
-					headers = {
-							'Content-Type': 'application/x-www-form-urlencoded',
-							'Authorization': 'Bearer ' + str(i['token_info']['access'])
-					}
-				)
-				if(clients.status_code == 200):
-					resulted_list = []
-					client_full_list = json.loads(clients.text)
-					client_existed_ids = [e['client_id'] for e in existed[i['client_id']]]
-					client_new_list = [c for c in client_full_list if c['id'] not in client_existed_ids]
+		if doPar:
+			q = Queue(maxsize = 0)
+			def threadingClients(q,result):
+				while not q.empty():
+					work = q.get()
+					client_inst = MTClientP(work[1],work[2])
+					result[work[0]] = {'log': client_inst.log, 'configs': client_inst.config}
+					q.task_done()
+				return True
+
+			if updateList:
+				for i in self.config['grants']:
+					parent = {'id': i['client_id'], 'secret': i['client_secret']}
+					clients = requests.get( 
+						self.base + '/api/v1/clients.json',
+						headers = {
+								'Content-Type': 'application/x-www-form-urlencoded',
+								'Authorization': 'Bearer ' + str(i['token_info']['access'])
+						}
+					)
+					if(clients.status_code == 200):
+						resulted_list = []
+						client_full_list = json.loads(clients.text)
+						client_existed_ids = [e['client_id'] for e in existed[i['client_id']]]
+						client_new_list = [c for c in client_full_list if c['id'] not in client_existed_ids]
+						load = [cc for cc in existed[i['client_id']]]
+						num_threads = min(50, len(load))
+						results = [{} for x in load]
+
+						for l in range(len(load)):
+							q.put((l, parent, load[l]))
+
+						for t in range(num_threads):
+							t = threading.Thread(target = threadingClients, args = (q,results))
+							t.start()
+
+						q.join()
+						self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
+						resulted_list = [item for sublist in [cl['configs'] for cl in results] for item in sublist]
+						if len(client_new_list) > 0:
+							client_new_configs = [{
+									'client_id': cn['id'],
+									'client_name': cn['additional_info']['client_name'],
+									'client_email': cn['username'],
+									'client_status': cn['status'],
+									'client_access': '_blank',
+									'client_refresh': '_blank',
+									'expiration': '-1'
+								} for cn in client_new_list]
+							new_load = [nc for nc in client_new_configs]
+							num_threads = min(50, len(new_load))
+							results_new = [{} for x in new_load]
+
+							with q.mutex:
+								q.queue.clear()
+
+							for l in range(len(new_load)):
+								q.put((l, parent, new_load[l]))
+
+							for t in range(num_threads):
+								t = threading.Thread(target = threadingClients, args = (q,results_new))
+								t.start()
+							q.join()
+							self.log += [item for sublist in [cl['log'] for cl in results_new] for item in sublist]
+							resulted_list += [item for sublist in [cl['configs'] for cl in results_new] for item in sublist]
+					else:
+						self.log.append({
+							'source': 'target',
+							'date': str(datetime.datetime.now()),
+							'action': 'clients',
+							'state': 'ERROR',
+							'details': {
+								'id': i['client_id'],
+								'step': 'list',
+								'reason': str(clients.status_code),
+								'text': str(clients.text)
+							}
+						})
+					result[i['client_id']] = resulted_list
+			else:
+				for i in self.config['grants']:
+					parent = {'id': i['client_id'], 'secret': i['client_secret']}
+					load = [cc for cc in existed[i['client_id']]]
+
+					num_threads = min(50, len(load))
+					results = [{} for x in load]
+					for l in range(len(load)):
+						q.put((l, parent, load[l]))
+
+					for t in range(num_threads):
+						t = threading.Thread(target = threadingClients, args = (q,results))
+						t.start()
+					q.join()
+					self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
+					result[i['client_id']] = [item for sublist in [cl['configs'] for cl in results] for item in sublist]
+		else:
+			if updateList:
+				for i in self.config['grants']:
+					clients = requests.get( 
+						self.base + '/api/v1/clients.json',
+						headers = {
+								'Content-Type': 'application/x-www-form-urlencoded',
+								'Authorization': 'Bearer ' + str(i['token_info']['access'])
+						}
+					)
+					if(clients.status_code == 200):
+						resulted_list = []
+						client_full_list = json.loads(clients.text)
+						client_existed_ids = [e['client_id'] for e in existed[i['client_id']]]
+						client_new_list = [c for c in client_full_list if c['id'] not in client_existed_ids]
+						for ei,ev in enumerate(existed[i['client_id']]):
+							client_account = MTClient(ev['client_id'], i['client_id'], i['client_secret'], ev)
+							existed[i['client_id']][ei] = client_account.config
+							self.log += client_account.log
+						if len(client_new_list) > 0:
+							client_new_configs = []
+							for cn in client_new_list:
+								client_tmp_config = {
+									'client_id': cn['id'],
+									'client_name': cn['additional_info']['client_name'],
+									'client_email': cn['username'],
+									'client_status': cn['status'],
+									'client_access': '_blank',
+									'client_refresh': '_blank',
+									'expiration': '-1'
+								}
+								client_account = MTClient(cn['id'], i['client_id'], i['client_secret'], client_tmp_config)
+								client_new_configs.append(client_account.config)
+								self.log += client_account.log
+							resulted_list = existed[i['client_id']] + client_new_configs
+						else:
+							resulted_list = existed[i['client_id']]
+					else:
+						self.log.append({
+							'source': 'target',
+							'date': str(datetime.datetime.now()),
+							'action': 'clients',
+							'state': 'ERROR',
+							'details': {
+								'id': i['client_id'],
+								'step': 'list',
+								'reason': str(clients.status_code),
+								'text': str(clients.text)
+							}
+						})
+					result[i['client_id']] = resulted_list
+			else:
+				for i in self.config['grants']:
 					for ei,ev in enumerate(existed[i['client_id']]):
 						client_account = MTClient(ev['client_id'], i['client_id'], i['client_secret'], ev)
 						existed[i['client_id']][ei] = client_account.config
 						self.log += client_account.log
-					if len(client_new_list) > 0:
-						client_new_configs = []
-						for cn in client_new_list:
-							client_tmp_config = {
-								'client_id': cn['id'],
-								'client_name': cn['additional_info']['client_name'],
-								'client_email': cn['username'],
-								'client_status': cn['status'],
-								'client_access': '_blank',
-								'client_refresh': '_blank',
-								'expiration': '-1'
-							}
-							client_account = MTClient(cn['id'], i['client_id'], i['client_secret'], client_tmp_config)
-							client_new_configs.append(client_account.config)
-							self.log += client_account.log
-						resulted_list = existed[i['client_id']] + client_new_configs
-					else:
-						resulted_list = existed[i['client_id']]
+					result[i['client_id']] = existed[i['client_id']]
+		
+		return(result)
+
+	def getCampaigns(self, clients, withStats = False, clientsLimit = 0, doPar = True):
+
+		result = {}
+
+		if doPar:
+			q = Queue(maxsize = 0)
+			def threadingCampaigns(q,result):
+				while not q.empty():
+					work = q.get()
+					client_inst = MTClientP(work[1],work[2])
+					camps = client_inst.getCampaigns(withStats)
+					result[work[0]] = {'log': client_inst.log, 'campaigns': camps}
+					q.task_done()
+				return True
+
+			for i in self.config['grants']:
+				parent = {'id': i['client_id'], 'secret': i['client_secret']}
+				if clientsLimit > 0:
+					load = [cc for ic,cc in enumerate(clients[i['client_id']][:clientsLimit])]
 				else:
-					self.log.append({
-						'source': 'target',
-						'date': str(datetime.datetime.now()),
-						'action': 'clients',
-						'state': 'ERROR',
-						'details': {
-							'id': i['client_id'],
-							'step': 'list',
-							'reason': str(clients.status_code),
-							'text': str(clients.text)
-						}
-					})
-				result[i['client_id']] = resulted_list
+					load = [cc for ic,cc in enumerate(clients[i['client_id']])]
+
+				num_threads = min(50, len(load))
+				results = [{} for x in load]
+				for l in range(len(load)):
+					q.put((l, parent, load[l]))
+				for t in range(num_threads):
+					t = threading.Thread(target = threadingCampaigns, args = (q,results))
+					t.start()
+				q.join()
+				self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
+				result[i['client_id']] = [item for sublist in [cl['campaigns'] for cl in results] for item in sublist]
 		else:
 			for i in self.config['grants']:
-				for ei,ev in enumerate(existed[i['client_id']]):
-					client_account = MTClient(ev['client_id'], i['client_id'], i['client_secret'], ev)
-					existed[i['client_id']][ei] = client_account.config
+				resulted_list = []
+				clients_list = clients[i['client_id']]
+				for ci,cc in enumerate(clients_list):
+					if clientsLimit > 0 and ci == clientsLimit:
+						break
+					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
 					self.log += client_account.log
-				result[i['client_id']] = existed[i['client_id']]
-		return(result)
-
-	def getCampaigns(self, clients, withStats = False, clientsLimit = 0):
-
-		result = {}
-
-		for i in self.config['grants']:
-
-			resulted_list = []
-			clients_list = clients[i['client_id']]
-			for ci,cc in enumerate(clients_list):
-				if clientsLimit > 0 and ci == clientsLimit:
-					break
-				client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
-				self.log += client_account.log
-				resulted_list += client_account.getCampaigns(withStats)
-				self.log += client_account.log
-			print(len(resulted_list))
-			result[i['client_id']] = resulted_list
+					resulted_list += client_account.getCampaigns(withStats)
+					self.log += client_account.log
+				result[i['client_id']] = resulted_list
 
 		return(result)
 
-	def getStats(self, clients, date_start, date_end, clientsLimit = 0):
+	def getStats(self, clients, date_start, date_end, clientsLimit = 0, doPar = True):
 
 		result = {}
 
-		for i in self.config['grants']:
+		if doPar:
+			q = Queue(maxsize = 0)
+			def threadingStats(q,result):
+				while not q.empty():
+					work = q.get()
+					client_inst = MTClientP(work[1],work[2])
+					stats = client_inst.getStats(date_start, date_end)
+					result[work[0]] = {'log': client_inst.log, 'stats': stats}
+					q.task_done()
+				return True
 
-			resulted_list = []
-			clients_list = clients[i['client_id']]
-			for ci,cc in enumerate(clients_list):
-				if clientsLimit > 0 and ci == clientsLimit:
-					break
-				client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
-				self.log += client_account.log
-				resulted_list += client_account.getStats(date_start, date_end)
-				self.log += client_account.log
-			result[i['client_id']] = resulted_list
+			for i in self.config['grants']:
+				parent = {'id': i['client_id'], 'secret': i['client_secret']}
+				if clientsLimit > 0:
+					load = [cc for ic,cc in enumerate(clients[i['client_id']][:clientsLimit])]
+				else:
+					load = [cc for ic,cc in enumerate(clients[i['client_id']])]
+
+				num_threads = min(50, len(load))
+				results = [{} for x in load]
+
+				for l in range(len(load)):
+					q.put((l, parent, load[l]))
+				for t in range(num_threads):
+					t = threading.Thread(target = threadingStats, args = (q,results))
+					t.start()
+				q.join()
+				self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
+				result[i['client_id']] = [item for sublist in [cl['stats'] for cl in results] for item in sublist]
+		else:
+			for i in self.config['grants']:
+				resulted_list = []
+				clients_list = clients[i['client_id']]
+				for ci,cc in enumerate(clients_list):
+					if clientsLimit > 0 and ci == clientsLimit:
+						break
+					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
+					self.log += client_account.log
+					resulted_list += client_account.getStats(date_start, date_end)
+					self.log += client_account.log
+				result[i['client_id']] = resulted_list
 
 		return(result)
 
-
-	def getStatsV2(self, clients, date_start, date_end, clientsLimit = 10):
+	def getStatsV2(self, clients, date_start, date_end, clientsLimit = 0, doPar = True):
 
 		result = {}
 
-		for i in self.config['grants']:
+		if doPar:
+			q = Queue(maxsize = 0)
+			def threadingStats(q,result):
+				while not q.empty():
+					work = q.get()
+					client_inst = MTClientP(work[1],work[2])
+					stats = client_inst.getStatsV2(date_start, date_end)
+					result[work[0]] = {'log': client_inst.log, 'stats': stats}
+					q.task_done()
+				return True
 
-			resulted_list = []
-			clients_list = clients[i['client_id']]
-			for ci,cc in enumerate(clients_list):
-				if clientsLimit > 0 and ci == clientsLimit:
-					break
-				client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
-				self.log += client_account.log
-				resulted_list += client_account.getStatsV2(date_start, date_end)
-				self.log += client_account.log
-			result[i['client_id']] = resulted_list
+			for i in self.config['grants']:
+				parent = {'id': i['client_id'], 'secret': i['client_secret']}
+				if clientsLimit > 0:
+					load = [cc for ic,cc in enumerate(clients[i['client_id']][:clientsLimit])]
+				else:
+					load = [cc for ic,cc in enumerate(clients[i['client_id']])]
+
+				num_threads = min(50, len(load))
+				results = [{} for x in load]
+
+				for l in range(len(load)):
+					q.put((l, parent, load[l]))
+				for t in range(num_threads):
+					t = threading.Thread(target = threadingStats, args = (q,results))
+					t.start()
+				q.join()
+				self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
+				result[i['client_id']] = [item for sublist in [cl['stats'] for cl in results] for item in sublist]
+		else:
+			for i in self.config['grants']:
+				resulted_list = []
+				clients_list = clients[i['client_id']]
+				for ci,cc in enumerate(clients_list):
+					if clientsLimit > 0 and ci == clientsLimit:
+						break
+					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
+					self.log += client_account.log
+					resulted_list += client_account.getStatsV2(date_start, date_end)
+					self.log += client_account.log
+				result[i['client_id']] = resulted_list
+
+		return(result)
+
+	def getCounters(self, clients, clientsLimit = 0):
+
+		result = {}
+		q = Queue(maxsize = 0)
+		def threadingCounters(q,result):
+			while not q.empty():
+				work = q.get()
+				client_inst = MTClientP(work[1],work[2])
+				camps = client_inst.getCounters()
+				result[work[0]] = {'log': client_inst.log, 'campaigns': camps}
+				q.task_done()
+			return True
+
+		for i in self.config['grants']:
+			parent = {'id': i['client_id'], 'secret': i['client_secret']}
+			if clientsLimit > 0:
+				load = [cc for ic,cc in enumerate(clients[i['client_id']][:clientsLimit])]
+			else:
+				load = [cc for ic,cc in enumerate(clients[i['client_id']])]
+
+			num_threads = min(50, len(load))
+			results = [{} for x in load]
+			for l in range(len(load)):
+				q.put((l, parent, load[l]))
+			for t in range(num_threads):
+				t = threading.Thread(target = threadingCounters, args = (q,results))
+				t.start()
+			q.join()
+			self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
+			result[i['client_id']] = [item for sublist in [cl['campaigns'] for cl in results] for item in sublist]
 
 		return(result)
