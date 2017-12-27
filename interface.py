@@ -18,7 +18,7 @@ if __name__ == '__main__':
 	config_file.close()
 	
 	parser = argparse.ArgumentParser( description = 'Interface for myTarget API')
-	parser.add_argument("task", help = "complete task")
+	parser.add_argument("task", choices = ['clients', 'campaigns', 'counters', 'stats', 'stats_v2'], help = "complete task")
 	parser.add_argument("-l", "--show_log", action = "store_true", help = "print execution log")
 	parser.add_argument("-t", "--with_threading", action = "store_true", help = "perform task in parallel mode")
 	parser.add_argument("-cl", "--clients_list", nargs = '*', help = "produce clients list", default = [])
