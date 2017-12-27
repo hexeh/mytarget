@@ -66,7 +66,7 @@ if __name__ == '__main__':
 	
 	if current_task == 'campaigns':
 
-		campaigns_new = mt.getCampaigns(clients, clientsLimit = 0, doPar = args.with_threading)
+		campaigns = mt.getCampaigns(clients, clientsLimit = 0, doPar = args.with_threading)
 		log = mt.log
 			
 	if current_task == 'stats':
@@ -94,5 +94,11 @@ if __name__ == '__main__':
 			with open('dump/dump_{0!s}.json'.format(date_next.strftime('%Y%m%d')), 'w') as f:
 				json.dump(stats_new, f)
 			date_next = date_next + datetime.timedelta(1)
+	
+	if current_task == 'counters':
+
+		counters = mt.getCounters(clients)
+		log = mt.log
+		
 	if args.show_log:
 			pp.pprint(log)
