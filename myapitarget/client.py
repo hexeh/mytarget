@@ -213,54 +213,54 @@ class MTClient:
 	def getCampaigns(self):
 
 		result = []
+		time_sense = datetime.date.today() - datetime.timedelta(90)
 		if self.errors_cnt == 0:
-
-			reasonable_status = ['active', 'blocked', 'deleted']
-			time.sleep(0.5)
-			for rs in reasonable_status:
-				time.sleep(1)
-				camps_query = {
-					'status': rs,
-					'fields': 'id,name,status'
+			# reasonable_status = ['active', 'blocked', 'deleted']
+			#for rs in reasonable_status:
+			camps_query = {
+				'fields': 'id,name,status,last_stats_updated'
+			}
+			camps_r = requests.get(
+				self.base + '/api/v1/campaigns.json?' + urllib.parse.urlencode(camps_query), 
+				headers = {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					'Authorization': 'Bearer ' + str(self.config['client_access'])
 				}
-				camps_r = requests.get(
-					self.base + '/api/v1/campaigns.json?' + urllib.parse.urlencode(camps_query), 
-					headers = {
-						'Content-Type': 'application/x-www-form-urlencoded',
-						'Authorization': 'Bearer ' + str(self.config['client_access'])
-					}
-				)
-				if camps_r.status_code == 200:
-					camps = json.loads(camps_r.text)
-					for ic,mc in enumerate(camps):
-						camps[ic]['agency'] = self.parent
-						camps[ic]['client_id'] = self.id
-						result += camps
-						self.log.append({
-							'source': 'target',
-							'date': str(datetime.datetime.now()),
-							'action': 'dict',
-							'state': 'OK',
-							'details': {
-								'id': self.id,
-								'step': 'campaigns',
-								'reason': '200',
-								'text': ''
-							}
-						})
-				else:
+			)
+			if camps_r.status_code == 200:
+				camps = json.loads(camps_r.text)
+				for ic,mc in enumerate(camps):
+					camps[ic]['agency'] = self.parent
+					camps[ic]['client_id'] = self.id
+					if 'last_stats_updated' in mc.keys():
+						last_time = datetime.datetime.strptime(mc['last_stats_updated'], '%Y-%m-%d %H:%M:%S').date()
+						if last_time >= time_sense:
+							result += camps
 					self.log.append({
-							'source': 'target',
-							'date': str(datetime.datetime.now()),
-							'action': 'dict',
-							'state': 'ERROR',
-							'details': {
-								'id': self.id,
-								'step': 'campaigns',
-								'reason': str(camps_r.status_code),
-								'text': str(camps_r.text)
-							}
-						})
+						'source': 'target',
+						'date': str(datetime.datetime.now()),
+						'action': 'dict',
+						'state': 'OK',
+						'details': {
+							'id': self.id,
+							'step': 'campaigns',
+							'reason': '200',
+							'text': ''
+						}
+					})
+			else:
+				self.log.append({
+						'source': 'target',
+						'date': str(datetime.datetime.now()),
+						'action': 'dict',
+						'state': 'ERROR',
+						'details': {
+							'id': self.id,
+							'step': 'campaigns',
+							'reason': str(camps_r.status_code),
+							'text': str(camps_r.text)
+						}
+					})
 		return(result)
 
 	def getStats(self, date_start, date_end):
@@ -321,39 +321,37 @@ class MTClient:
 		stats_total = []
 		if self.errors_cnt == 0:
 
-			reasonable_status = ['active', 'blocked', 'deleted']
+			# reasonable_status = ['active', 'blocked', 'deleted']
 			camp_ids = []
 			time.sleep(0.3)
 			
-			for rs in reasonable_status:
-				time.sleep(0.8)
-				camps_query = {
-					'status': rs,
-					'fields': 'id'
+			#for rs in reasonable_status:
+			camps_query = {
+				'fields': 'id,last_stats_updated'
+			}
+			camps_r = requests.get(
+				self.base + '/api/v1/campaigns.json?' + urllib.parse.urlencode(camps_query), 
+				headers = {
+					'Content-Type': 'application/x-www-form-urlencoded',
+					'Authorization': 'Bearer ' + str(self.config['client_access'])
 				}
-				camps_r = requests.get(
-					self.base + '/api/v1/campaigns.json?' + urllib.parse.urlencode(camps_query), 
-					headers = {
-						'Content-Type': 'application/x-www-form-urlencoded',
-						'Authorization': 'Bearer ' + str(self.config['client_access'])
+			)
+			if camps_r.status_code == 200:
+				camps = json.loads(camps_r.text)
+				camp_ids += [str(cid['id']) for cid in camps if 'last_stats_updated' in cid.keys() and datetime.datetime.strptime(cid['last_stats_updated'], '%Y-%m-%d %H:%M:%S').date() >= datetime.datetime.strptime(date_start, '%d.%m.%Y').date()]
+			else:
+				self.log.append({
+					'source': 'target',
+					'date': str(datetime.datetime.now()),
+					'action': 'dict',
+					'state': 'ERROR',
+					'details': {
+						'id': self.id,
+						'step': 'campaigns',
+						'reason': str(camps_r.status_code),
+						'text': str(camps_r.text)
 					}
-				)
-				if camps_r.status_code == 200:
-					camps = json.loads(camps_r.text)
-					camp_ids += [str(cid['id']) for cid in camps]
-				else:
-					self.log.append({
-						'source': 'target',
-						'date': str(datetime.datetime.now()),
-						'action': 'dict',
-						'state': 'ERROR',
-						'details': {
-							'id': self.id,
-							'step': 'campaigns',
-							'reason': str(camps_r.status_code),
-							'text': str(camps_r.text)
-						}
-					})
+				})
 			if len(camp_ids) > 0:
 				chunks_count = math.ceil(len(camp_ids) / 152)
 				if chunks_count <= 1:
