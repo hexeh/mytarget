@@ -59,7 +59,7 @@ if __name__ == '__main__':
 			# Set updateList to True for first run
 			clients_new = mt.getClients(clients, updateList = False, doPar = args.with_threading)
 		else:
-			clients_new = mt.getClients(clients)
+			clients_new = mt.getClients(clients, doPar = args.with_threading)
 		with open('configs/clients_list.json', 'w') as cl:
 			json.dump(clients_new, cl)
 		log = mt.log
