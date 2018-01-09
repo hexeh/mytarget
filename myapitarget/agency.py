@@ -10,6 +10,7 @@ import requests
 import urllib
 import sys
 from queue import Queue
+from multiprocessing import Pool
 from lib import MTClient
 
 class MTAgency:
@@ -289,7 +290,7 @@ class MTAgency:
 		
 		return(result)
 
-	def getCampaigns(self, clients, withStats = False, clientsLimit = 0, doPar = True):
+	def getCampaigns(self, clients, clientsLimit = 0, doPar = True):
 
 		result = {}
 
@@ -299,12 +300,13 @@ class MTAgency:
 				while not q.empty():
 					work = q.get()
 					client_inst = MTClientP(work[1],work[2])
-					camps = client_inst.getCampaigns(withStats)
+					camps = client_inst.getCampaigns()
 					result[work[0]] = {'log': client_inst.log, 'campaigns': camps}
 					q.task_done()
 				return True
 
 			for i in self.config['grants']:
+
 				parent = {'id': i['client_id'], 'secret': i['client_secret']}
 				if clientsLimit > 0:
 					load = [cc for ic,cc in enumerate(clients[i['client_id']][:clientsLimit])]
@@ -330,7 +332,7 @@ class MTAgency:
 						break
 					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
 					self.log += client_account.log
-					resulted_list += client_account.getCampaigns(withStats)
+					resulted_list += client_account.getCampaigns()
 					self.log += client_account.log
 				result[i['client_id']] = resulted_list
 
