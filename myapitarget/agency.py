@@ -10,8 +10,7 @@ import requests
 import urllib
 import sys
 from queue import Queue
-from multiprocessing import Pool
-from lib import MTClient
+from myapitarget import MTClient
 
 class MTAgency:
 
@@ -139,8 +138,8 @@ class MTAgency:
 			def threadingClients(q,result):
 				while not q.empty():
 					work = q.get()
-					client_inst = MTClientP(work[1],work[2])
-					result[work[0]] = {'log': client_inst.log, 'configs': client_inst.config}
+					client_inst = MTClient(work[1],work[2])
+					result.append({'log': client_inst.log, 'configs': client_inst.config})
 					q.task_done()
 				return True
 
@@ -161,7 +160,7 @@ class MTAgency:
 						client_new_list = [c for c in client_full_list if c['id'] not in client_existed_ids]
 						load = [cc for cc in existed[i['client_id']]]
 						num_threads = min(50, len(load))
-						results = [{} for x in load]
+						results = []
 
 						for l in range(len(load)):
 							q.put((l, parent, load[l]))
@@ -171,8 +170,10 @@ class MTAgency:
 							t.start()
 
 						q.join()
+						with open('configs/new.json', 'w') as jsonf:
+							json.dump(results, jsonf)
 						self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
-						resulted_list = [item for sublist in [cl['configs'] for cl in results] for item in sublist]
+						resulted_list = [cl['configs'] for cl in results]
 						if len(client_new_list) > 0:
 							client_new_configs = [{
 									'client_id': cn['id'],
@@ -228,7 +229,7 @@ class MTAgency:
 						t.start()
 					q.join()
 					self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
-					result[i['client_id']] = [item for sublist in [cl['configs'] for cl in results] for item in sublist]
+					result[i['client_id']] += [item for sublist in [cl['configs'] for cl in results] for item in sublist]
 		else:
 			if updateList:
 				for i in self.config['grants']:
@@ -299,7 +300,7 @@ class MTAgency:
 			def threadingCampaigns(q,result):
 				while not q.empty():
 					work = q.get()
-					client_inst = MTClientP(work[1],work[2])
+					client_inst = MTClient(work[1],work[2])
 					camps = client_inst.getCampaigns()
 					result[work[0]] = {'log': client_inst.log, 'campaigns': camps}
 					q.task_done()
@@ -347,7 +348,7 @@ class MTAgency:
 			def threadingStats(q,result):
 				while not q.empty():
 					work = q.get()
-					client_inst = MTClientP(work[1],work[2])
+					client_inst = MTClient(work[1],work[2])
 					stats = client_inst.getStats(date_start, date_end)
 					result[work[0]] = {'log': client_inst.log, 'stats': stats}
 					q.task_done()
@@ -395,7 +396,7 @@ class MTAgency:
 			def threadingStats(q,result):
 				while not q.empty():
 					work = q.get()
-					client_inst = MTClientP(work[1],work[2])
+					client_inst = MTClient(work[1],work[2])
 					stats = client_inst.getStatsV2(date_start, date_end)
 					result[work[0]] = {'log': client_inst.log, 'stats': stats}
 					q.task_done()
@@ -441,7 +442,7 @@ class MTAgency:
 		def threadingCounters(q,result):
 			while not q.empty():
 				work = q.get()
-				client_inst = MTClientP(work[1],work[2])
+				client_inst = MTClient(work[1],work[2])
 				camps = client_inst.getCounters()
 				result[work[0]] = {'log': client_inst.log, 'campaigns': camps}
 				q.task_done()
