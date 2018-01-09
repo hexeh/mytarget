@@ -210,20 +210,18 @@ class MTClient:
 					'state': 'ERROR'
 				})
 
-	def getCampaigns(self, withStats):
+	def getCampaigns(self):
 
-		result = {
-			'campaigns': [],
-			'stats': []
-		}
+		result = []
 		if self.errors_cnt == 0:
 
 			reasonable_status = ['active', 'blocked', 'deleted']
+			time.sleep(0.5)
 			for rs in reasonable_status:
 				time.sleep(1)
 				camps_query = {
 					'status': rs,
-					'fields': 'id,name,status' + ( ',stats_yesterday' if withStats else '')
+					'fields': 'id,name,status'
 				}
 				camps_r = requests.get(
 					self.base + '/api/v1/campaigns.json?' + urllib.parse.urlencode(camps_query), 
@@ -237,18 +235,7 @@ class MTClient:
 					for ic,mc in enumerate(camps):
 						camps[ic]['agency'] = self.parent
 						camps[ic]['client_id'] = self.id
-						if withStats:
-							result['stats'].append({
-								'campaign_id': mc['id'],
-								'date': (datetime.datetime.now() - datetime.timedelta(1)).strftime('%d.%m.%Y'),
-								'impressions': mc['stats_yesterday']['shows'],
-								'clicks': mc['stats_yesterday']['clicks'],
-								'cost': mc['stats_yesterday']['amount']
-							})
-							del camps[ic]['stats_yesterday']
-							result['campaigns'] += camps
-						else:
-							result['campaigns'] += camps
+						result += camps
 						self.log.append({
 							'source': 'target',
 							'date': str(datetime.datetime.now()),
