@@ -199,7 +199,7 @@ class MTAgency:
 								t.start()
 							q.join()
 							self.log += [item for sublist in [cl['log'] for cl in results_new] for item in sublist]
-							resulted_list += [item for sublist in [cl['configs'] for cl in results_new] for item in sublist]
+							resulted_list += [cl['configs'] for cl in results_new]
 					else:
 						self.log.append({
 							'source': 'target',
