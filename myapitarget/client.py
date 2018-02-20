@@ -373,14 +373,26 @@ class MTClient:
 						stats_chunk = json.loads(stats_r.text)['items']
 						for sc in stats_chunk:
 							for scs in sc['rows']:
-								stats_total.append({
-									'client_id': self.id,
-									'campaign_id': sc['id'],
-									'date': scs['date'],
-									'impressions': scs['base']['shows'],
-									'clicks': scs['base']['clicks'],
-									'cost': scs['base']['spent']
-								})
+								if 'goals' in scs['base'].keys():
+									stats_total.append({
+										'client_id': self.id,
+										'campaign_id': sc['id'],
+										'date': scs['date'],
+										'conversions': scs['base']['goals'],
+										'impressions': scs['base']['shows'],
+										'clicks': scs['base']['clicks'],
+										'cost': scs['base']['spent']
+									})
+								else:
+									stats_total.append({
+										'client_id': self.id,
+										'campaign_id': sc['id'],
+										'date': scs['date'],
+										'conversions': 0,
+										'impressions': scs['base']['shows'],
+										'clicks': scs['base']['clicks'],
+										'cost': scs['base']['spent']
+									})
 						self.log.append({
 							'source': 'target',
 							'date': str(datetime.datetime.now()),
@@ -435,14 +447,26 @@ class MTClient:
 							stats_chunk = json.loads(stats_r.text)['items']
 							for sc in stats_chunk:
 								for scs in sc['rows']:
-									stats_total.append({
-										'client_id': self.id,
-										'campaign_id': sc['id'],
-										'date': scs['date'],
-										'impressions': scs['base']['shows'],
-										'clicks': scs['base']['clicks'],
-										'cost': scs['base']['spent']
-									})
+									if 'goals' in scs['base'].keys():
+										stats_total.append({
+											'client_id': self.id,
+											'campaign_id': sc['id'],
+											'date': scs['date'],
+											'conversions': scs['base']['goals'],
+											'impressions': scs['base']['shows'],
+											'clicks': scs['base']['clicks'],
+											'cost': scs['base']['spent']
+										})
+									else:
+										stats_total.append({
+											'client_id': self.id,
+											'campaign_id': sc['id'],
+											'date': scs['date'],
+											'conversions': 0,
+											'impressions': scs['base']['shows'],
+											'clicks': scs['base']['clicks'],
+											'cost': scs['base']['spent']
+										})
 							self.log.append({
 								'source': 'target',
 								'date': str(datetime.datetime.now()),
