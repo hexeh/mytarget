@@ -157,6 +157,10 @@ class MTAgency:
 						resulted_list = []
 						client_full_list = json.loads(clients.text)
 						client_existed_ids = [e['client_id'] for e in existed[i['client_id']]]
+						for ei,ev in enumerate(existed[i['client_id']]):
+							for ni in client_full_list:
+								if ev['client_id'] == ni['id']:
+									existed[i['client_id']][ei]['client_name'] = ni['additional_info']['client_name']
 						client_new_list = [c for c in client_full_list if c['id'] not in client_existed_ids]
 						load = [cc for cc in existed[i['client_id']]]
 						num_threads = min(50, len(load))
@@ -186,7 +190,7 @@ class MTAgency:
 								} for cn in client_new_list]
 							new_load = [nc for nc in client_new_configs]
 							num_threads = min(50, len(new_load))
-							results_new = [{} for x in new_load]
+							results_new = []
 
 							with q.mutex:
 								q.queue.clear()
@@ -199,7 +203,10 @@ class MTAgency:
 								t.start()
 							q.join()
 							self.log += [item for sublist in [cl['log'] for cl in results_new] for item in sublist]
+							with open('configs/new_clients.json', 'w') as jsonf:
+								json.dump(results_new, jsonf)
 							resulted_list += [cl['configs'] for cl in results_new]
+							# resulted_list += [item for sublist in [cl['configs'] for cl in results_new] for item in sublist]
 					else:
 						self.log.append({
 							'source': 'target',
@@ -220,7 +227,7 @@ class MTAgency:
 					load = [cc for cc in existed[i['client_id']]]
 
 					num_threads = min(50, len(load))
-					results = [{} for x in load]
+					results = []
 					for l in range(len(load)):
 						q.put((l, parent, load[l]))
 
@@ -229,7 +236,9 @@ class MTAgency:
 						t.start()
 					q.join()
 					self.log += [item for sublist in [cl['log'] for cl in results] for item in sublist]
-					result[i['client_id']] += [item for sublist in [cl['configs'] for cl in results] for item in sublist]
+					resulted_list = [cl['configs'] for cl in results]
+					result[i['client_id']] = resulted_list
+					# result[i['client_id']] += [item for sublist in [cl['configs'] for cl in results] for item in sublist]
 		else:
 			if updateList:
 				for i in self.config['grants']:
@@ -244,6 +253,10 @@ class MTAgency:
 						resulted_list = []
 						client_full_list = json.loads(clients.text)
 						client_existed_ids = [e['client_id'] for e in existed[i['client_id']]]
+						for ei,ev in enumerate(existed[i['client_id']]):
+							for ni in client_full_list:
+								if ev['client_id'] == ni['id']:
+									existed[i['client_id']][ei]['client_name'] = ni['additional_info']['client_name']
 						client_new_list = [c for c in client_full_list if c['id'] not in client_existed_ids]
 						for ei,ev in enumerate(existed[i['client_id']]):
 							client_account = MTClient(ev['client_id'], i['client_id'], i['client_secret'], ev)
@@ -261,7 +274,7 @@ class MTAgency:
 									'client_refresh': '_blank',
 									'expiration': '-1'
 								}
-								client_account = MTClient(cn['id'], i['client_id'], i['client_secret'], client_tmp_config)
+								client_account = MTClient({'id': i['client_id'], 'secret': i['client_secret']}, client_tmp_config)
 								client_new_configs.append(client_account.config)
 								self.log += client_account.log
 							resulted_list = existed[i['client_id']] + client_new_configs
@@ -284,7 +297,7 @@ class MTAgency:
 			else:
 				for i in self.config['grants']:
 					for ei,ev in enumerate(existed[i['client_id']]):
-						client_account = MTClient(ev['client_id'], i['client_id'], i['client_secret'], ev)
+						client_account = MTClient({'id': i['client_id'], 'secret': i['client_secret']}, ev)
 						existed[i['client_id']][ei] = client_account.config
 						self.log += client_account.log
 					result[i['client_id']] = existed[i['client_id']]
@@ -328,10 +341,11 @@ class MTAgency:
 			for i in self.config['grants']:
 				resulted_list = []
 				clients_list = clients[i['client_id']]
+				parent ={'id': i['client_id'], 'secret': i['client_secret']}
 				for ci,cc in enumerate(clients_list):
 					if clientsLimit > 0 and ci == clientsLimit:
 						break
-					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
+					client_account = MTClient(parent, cc)
 					self.log += client_account.log
 					resulted_list += client_account.getCampaigns()
 					self.log += client_account.log
@@ -376,10 +390,11 @@ class MTAgency:
 			for i in self.config['grants']:
 				resulted_list = []
 				clients_list = clients[i['client_id']]
+				parent = {'id': i['client_id'], 'secret': i['client_secret']}
 				for ci,cc in enumerate(clients_list):
 					if clientsLimit > 0 and ci == clientsLimit:
 						break
-					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
+					client_account = MTClient(parent, cc)
 					self.log += client_account.log
 					resulted_list += client_account.getStats(date_start, date_end)
 					self.log += client_account.log
@@ -424,10 +439,11 @@ class MTAgency:
 			for i in self.config['grants']:
 				resulted_list = []
 				clients_list = clients[i['client_id']]
+				parent = {'id': i['client_id'], 'secret': i['client_secret']}
 				for ci,cc in enumerate(clients_list):
 					if clientsLimit > 0 and ci == clientsLimit:
 						break
-					client_account = MTClient(cc['client_id'], i['client_id'], i['client_secret'], cc)
+					client_account = MTClient(parent, cc)
 					self.log += client_account.log
 					resulted_list += client_account.getStatsV2(date_start, date_end)
 					self.log += client_account.log
